@@ -4,7 +4,7 @@ Request preparation and conversion logic.
 import logging
 from typing import Dict, Any
 
-from openai_compat import convert_openai_request_to_anthropic
+from openai_compat import convert_openai_request_to_anthropic, ensure_thinking_prefix
 from anthropic import (
     sanitize_anthropic_request,
     inject_claude_code_system_message,
@@ -67,6 +67,10 @@ def prepare_anthropic_request(
                 f"[{request_id}] Increased max_tokens to {required_total} "
                 f"(thinking: {thinking_budget} + response: {min_response_tokens})"
             )
+
+        # Ensure all assistant messages have thinking blocks for multi-turn conversations
+        anthropic_request["messages"] = ensure_thinking_prefix(anthropic_request["messages"])
+        logger.debug(f"[{request_id}] Ensured thinking prefix on all assistant messages")
 
     # Sanitize request for Anthropic API constraints
     anthropic_request = sanitize_anthropic_request(anthropic_request)

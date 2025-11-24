@@ -7,7 +7,8 @@ Converts between OpenAI chat completion format and Anthropic messages format.
 from .message_converter import convert_openai_messages_to_anthropic
 from .content_converter import (
     convert_openai_content_to_anthropic,
-    convert_anthropic_content_to_openai
+    convert_anthropic_content_to_openai,
+    ensure_thinking_prefix
 )
 from .tool_converter import (
     convert_openai_tool_calls_to_anthropic,
@@ -28,6 +29,7 @@ __all__ = [
     # Content conversion
     "convert_openai_content_to_anthropic",
     "convert_anthropic_content_to_openai",
+    "ensure_thinking_prefix",
 
     # Tool conversion
     "convert_openai_tool_calls_to_anthropic",
