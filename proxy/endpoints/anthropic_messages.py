@@ -16,6 +16,8 @@ from anthropic import (
     make_anthropic_request,
     stream_anthropic_response,
 )
+from anthropic.thinking_keywords import process_thinking_keywords
+from openai_compat import ensure_thinking_prefix
 from models.resolution import resolve_model_metadata
 from models.reasoning import REASONING_BUDGET_MAP
 from oauth import OAuthManager
@@ -56,14 +58,32 @@ async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Requ
     original_model = anthropic_request.get("model")
     reasoning_level = None
     use_1m_context = False
-    
+
     if original_model:
         resolved_model, reasoning_level, use_1m_context = resolve_model_metadata(original_model)
         anthropic_request["model"] = resolved_model
-        
+
         if resolved_model != original_model or reasoning_level or use_1m_context:
             logger.debug(f"[{request_id}] Model resolution: {original_model} -> {resolved_model}, "
                         f"reasoning={reasoning_level}, 1m_context={use_1m_context}")
+
+    # Process thinking keywords in messages (detect, strip, and get config)
+    messages = anthropic_request.get("messages", [])
+    processed_messages, thinking_config = process_thinking_keywords(messages)
+
+    if thinking_config:
+        anthropic_request["messages"] = processed_messages
+        # Only set thinking if not already configured
+        if not anthropic_request.get("thinking"):
+            anthropic_request["thinking"] = thinking_config
+            logger.info(f"[{request_id}] Injected thinking config from keyword: {thinking_config}")
+        else:
+            # Update budget if keyword specifies higher budget
+            existing_budget = anthropic_request["thinking"].get("budget_tokens", 0)
+            keyword_budget = thinking_config.get("budget_tokens", 0)
+            if keyword_budget > existing_budget:
+                anthropic_request["thinking"]["budget_tokens"] = keyword_budget
+                logger.info(f"[{request_id}] Updated thinking budget from {existing_budget} to {keyword_budget}")
 
     # Ensure max_tokens is sufficient if thinking is enabled
     thinking = anthropic_request.get("thinking")
@@ -74,6 +94,10 @@ async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Requ
         if anthropic_request["max_tokens"] < required_total:
             anthropic_request["max_tokens"] = required_total
             logger.debug(f"[{request_id}] Increased max_tokens to {required_total} (thinking: {thinking_budget} + response: {min_response_tokens})")
+
+        # Ensure all assistant messages have thinking blocks for multi-turn conversations
+        anthropic_request["messages"] = ensure_thinking_prefix(anthropic_request["messages"])
+        logger.debug(f"[{request_id}] Ensured thinking prefix on all assistant messages")
 
     # Sanitize request for Anthropic API constraints
     anthropic_request = sanitize_anthropic_request(anthropic_request)
@@ -89,7 +113,7 @@ async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Requ
         # Check if request already has thinking parameter
         existing_thinking = anthropic_request.get("thinking")
         required_budget = REASONING_BUDGET_MAP[reasoning_level]
-        
+
         if not existing_thinking or existing_thinking.get("type") != "enabled":
             # Add thinking parameter with appropriate budget
             anthropic_request["thinking"] = {
@@ -109,16 +133,16 @@ async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Requ
 
     # Start with required base betas
     required_betas = ["claude-code-20250219", "fine-grained-tool-streaming-2025-05-14"]
-    
+
     # Add interleaved-thinking beta for reasoning models
     if reasoning_level:
         required_betas.append("interleaved-thinking-2025-05-14")
-    
+
     # Add context-1m beta when use_1m_context is True
     if use_1m_context:
         required_betas.append("context-1m-2025-08-07")
         logger.debug(f"[{request_id}] Adding context-1m beta header for 1M context model")
-    
+
     # Always include client-provided beta headers
     if client_beta_headers:
         client_betas = [beta.strip() for beta in client_beta_headers.split(",")]
