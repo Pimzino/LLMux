@@ -202,9 +202,9 @@ def ensure_thinking_prefix(messages: List[Dict[str, Any]]) -> List[Dict[str, Any
         content = new_message.get("content")
 
         if isinstance(content, str):
-            # String content - wrap with redacted thinking block
+            # String content - wrap with redacted thinking block with data field
             blocks: List[Dict[str, Any]] = []
-            blocks.append({"type": "redacted_thinking"})
+            blocks.append({"type": "redacted_thinking", "data": ""})
             if content:
                 blocks.append({"type": "text", "text": content})
             new_message["content"] = blocks
@@ -219,20 +219,20 @@ def ensure_thinking_prefix(messages: List[Dict[str, Any]]) -> List[Dict[str, Any
                     # Already has thinking/redacted_thinking block at start - keep as is
                     new_message["content"] = content
                 else:
-                    # Need to prepend redacted_thinking block
+                    # Need to prepend redacted_thinking block with data field
                     # This includes cases where first block is tool_use
-                    new_content: List[Dict[str, Any]] = [{"type": "redacted_thinking"}]
+                    new_content: List[Dict[str, Any]] = [{"type": "redacted_thinking", "data": ""}]
                     new_content.extend(content)
                     new_message["content"] = new_content
         elif isinstance(content, list):
-            # Empty list - add redacted thinking block
-            new_message["content"] = [{"type": "redacted_thinking"}]
+            # Empty list - add redacted thinking block with data field
+            new_message["content"] = [{"type": "redacted_thinking", "data": ""}]
         elif isinstance(content, dict):
             # Single dict (rare) - wrap with redacted thinking block first
-            new_message["content"] = [{"type": "redacted_thinking"}, content]
+            new_message["content"] = [{"type": "redacted_thinking", "data": ""}, content]
         else:
-            # Fallback - just add redacted thinking block
-            new_message["content"] = [{"type": "redacted_thinking"}]
+            # Fallback - just add redacted thinking block with data field
+            new_message["content"] = [{"type": "redacted_thinking", "data": ""}]
 
         updated_messages.append(new_message)
 
