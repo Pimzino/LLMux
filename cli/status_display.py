@@ -32,6 +32,39 @@ def show_token_status(storage: TokenStorage, console):
     input()
 
 
+def get_combined_auth_status(claude_storage: TokenStorage, chatgpt_storage) -> tuple[str, str, str]:
+    """
+    Get a combined authentication status for both Claude and ChatGPT.
+
+    Args:
+        claude_storage: TokenStorage instance for Claude
+        chatgpt_storage: ChatGPTTokenStorage instance
+
+    Returns:
+        Tuple of (status_label, detail_message, severity)
+    """
+    c_status = claude_storage.get_status()
+    g_status = chatgpt_storage.get_status()
+
+    c_has_valid_token = c_status.get("has_tokens") and not c_status.get("is_expired")
+    g_has_valid_token = g_status.get("has_tokens") and not g_status.get("is_expired")
+
+    if c_has_valid_token and g_has_valid_token:
+        return "BOTH", "Claude & ChatGPT", "green"
+    if c_has_valid_token:
+        return "CLAUDE_ONLY", "Claude only", "green"
+    if g_has_valid_token:
+        return "CHATGPT_ONLY", "ChatGPT only", "green"
+
+    # No valid tokens, determine warning or error
+    c_has_any_token = c_status.get("has_tokens")
+    g_has_any_token = g_status.get("has_tokens")
+
+    if c_has_any_token or g_has_any_token:
+        return "EXPIRED", "Token(s) expired", "yellow"
+
+    return "NONE", "No tokens available", "red"
+
 def get_auth_status(storage: TokenStorage) -> tuple[str, str]:
     """
     Get authentication status and expiry info
