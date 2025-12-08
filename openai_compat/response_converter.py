@@ -78,30 +78,43 @@ def convert_anthropic_response_to_openai(anthropic_response: Dict[str, Any], mod
     # Map stop reason
     finish_reason = map_stop_reason_to_finish_reason(anthropic_response.get("stop_reason"))
 
-    # Calculate usage with reasoning tokens
+    # Calculate usage with full OpenAI-compatible details
+    # This enables AI tools like Cursor, Cline, and Roo Code to track usage properly
     usage_obj = anthropic_response.get("usage", {})
     prompt_tokens = usage_obj.get("input_tokens", 0)
     completion_tokens = usage_obj.get("output_tokens", 0)
 
-    usage = {
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-        "total_tokens": prompt_tokens + completion_tokens
-    }
+    # Map Anthropic's cache fields to OpenAI's prompt_tokens_details
+    cached_tokens = usage_obj.get("cache_read_input_tokens", 0)
 
-    # Add reasoning tokens if thinking content exists
+    # Estimate reasoning tokens if thinking content exists
     # Note: Anthropic's output_tokens already includes thinking tokens
     # We report them separately in completion_tokens_details for transparency
+    reasoning_tokens = 0
     if reasoning_content:
         # Estimate reasoning tokens (4 characters per token is a rough estimate)
         # For more accuracy, could use tiktoken: len(tiktoken.get_encoding("cl100k_base").encode(reasoning_content))
         reasoning_tokens = len(reasoning_content) // 4
-
-        usage["completion_tokens_details"] = {
-            "reasoning_tokens": reasoning_tokens
-        }
-
         logger.debug(f"Extracted reasoning content: {len(reasoning_content)} chars, ~{reasoning_tokens} tokens")
+
+    usage = {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+        "prompt_tokens_details": {
+            "cached_tokens": cached_tokens,
+            "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+            "reasoning_tokens": reasoning_tokens,
+            "audio_tokens": 0,
+            "accepted_prediction_tokens": 0,
+            "rejected_prediction_tokens": 0
+        }
+    }
+
+    if cached_tokens > 0:
+        logger.debug(f"Cache hit: {cached_tokens} tokens read from cache")
 
     # Build OpenAI response
     # Generate system_fingerprint from Anthropic message ID for compatibility

@@ -51,6 +51,12 @@ async def convert_anthropic_stream_to_openai(
     # Track usage from message_delta events (for stream_options.include_usage)
     final_usage: Optional[Dict[str, Any]] = None
 
+    # Track cached tokens from message_start (Anthropic includes cache info there)
+    cached_tokens: int = 0
+
+    # Track reasoning character count for estimating reasoning tokens
+    reasoning_char_count: int = 0
+
     if tracer:
         tracer.log_note("starting OpenAI stream conversion")
 
@@ -113,6 +119,15 @@ async def convert_anthropic_stream_to_openai(
                     continue
 
                 if data_type == "message_start":
+                    # Capture cache info from message_start (Anthropic includes usage here)
+                    message = data.get("message", {})
+                    usage = message.get("usage", {})
+                    if usage:
+                        nonlocal cached_tokens
+                        cached_tokens = usage.get("cache_read_input_tokens", 0)
+                        if cached_tokens > 0:
+                            logger.debug(f"[{request_id}] Cache hit from message_start: {cached_tokens} tokens")
+
                     initial_chunk = {
                         "id": completion_id,
                         "object": "chat.completion.chunk",
@@ -295,6 +310,9 @@ async def convert_anthropic_stream_to_openai(
                         )
                         if reasoning_text:
                             yield emit_reasoning(reasoning_text)
+                            # Track reasoning character count for token estimation
+                            nonlocal reasoning_char_count
+                            reasoning_char_count += len(reasoning_text)
                             # Accumulate full thinking text for later reattachment
                             acc = current_thinking_blocks.get(sse_index)
                             if acc is not None:
@@ -371,14 +389,34 @@ async def convert_anthropic_stream_to_openai(
                     stop_reason = delta.get("stop_reason")
 
                     # Capture usage from message_delta (Anthropic provides cumulative usage here)
+                    # Build full OpenAI-compatible usage object for AI tools like Cursor, Cline, Roo Code
                     usage = data.get("usage", {})
                     if usage:
                         input_tokens = usage.get("input_tokens", 0)
                         output_tokens = usage.get("output_tokens", 0)
+                        # Also check for cache info in message_delta (may be provided here too)
+                        nonlocal cached_tokens
+                        if usage.get("cache_read_input_tokens"):
+                            cached_tokens = usage.get("cache_read_input_tokens", 0)
+
+                        # Estimate reasoning tokens from accumulated character count
+                        nonlocal reasoning_char_count
+                        reasoning_tokens = reasoning_char_count // 4 if reasoning_char_count > 0 else 0
+
                         final_usage = {
                             "prompt_tokens": input_tokens,
                             "completion_tokens": output_tokens,
-                            "total_tokens": input_tokens + output_tokens
+                            "total_tokens": input_tokens + output_tokens,
+                            "prompt_tokens_details": {
+                                "cached_tokens": cached_tokens,
+                                "audio_tokens": 0
+                            },
+                            "completion_tokens_details": {
+                                "reasoning_tokens": reasoning_tokens,
+                                "audio_tokens": 0,
+                                "accepted_prediction_tokens": 0,
+                                "rejected_prediction_tokens": 0
+                            }
                         }
                         logger.debug(f"[{request_id}] Captured usage from message_delta: {final_usage}")
 
