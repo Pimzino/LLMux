@@ -146,6 +146,57 @@ def check_and_refresh_chatgpt_auth(
         return False, "UNKNOWN_ERROR", f"Token refresh failed: {str(e)}. Please login"
 
 
+def check_any_provider_auth(
+    claude_storage: TokenStorage,
+    claude_oauth: OAuthManager,
+    chatgpt_storage: ChatGPTTokenStorage,
+    chatgpt_oauth: ChatGPTOAuthManager,
+    loop,
+    console,
+    debug: bool = False,
+) -> tuple[bool, str, str]:
+    """
+    Check authentication status for any provider (Claude or ChatGPT) and attempt refresh if needed.
+
+    Args:
+        claude_storage: TokenStorage instance for Claude
+        claude_oauth: OAuthManager instance for Claude
+        chatgpt_storage: ChatGPTTokenStorage instance for ChatGPT
+        chatgpt_oauth: ChatGPTOAuthManager instance for ChatGPT
+        loop: Event loop for async operations
+        console: Rich console for output
+        debug: Whether debug mode is enabled
+
+    Returns:
+        Tuple of (auth_ok: bool, status: str, message: str)
+    """
+    c_ok, c_state, c_msg = check_and_refresh_auth(claude_storage, claude_oauth, loop, console, debug)
+    g_ok, g_state, g_msg = check_and_refresh_chatgpt_auth(chatgpt_storage, chatgpt_oauth, loop, console, debug)
+
+    if c_ok and g_ok:
+        return True, "BOTH_VALID", "Claude and ChatGPT tokens are valid"
+    if c_ok:
+        return True, "CLAUDE_ONLY", c_msg or "Claude token is valid"
+    if g_ok:
+        return True, "CHATGPT_ONLY", g_msg or "ChatGPT token is valid"
+
+    # If both have no tokens, return the classic generic error
+    if c_state == "NO_AUTH" and g_state == "NO_AUTH":
+        return False, "NO_AUTH", "No authentication tokens found. Please login first (option 2)"
+
+    # Prioritize network errors for retry logic
+    if "NETWORK_ERROR" in [c_state, g_state]:
+        return False, "NETWORK_ERROR", "Network error during token refresh. Check connection and retry"
+
+    # If one failed refresh but the other just has no auth, prioritize the failure message
+    if c_state not in ["NO_AUTH", "VALID"] and g_state == "NO_AUTH":
+        return False, c_state, c_msg
+    if g_state not in ["NO_AUTH", "VALID"] and c_state == "NO_AUTH":
+        return False, g_state, g_msg
+
+    # Fallback to Claude's message, or ChatGPT's if Claude is missing
+    return False, c_state, c_msg or g_msg
+
 def login(auth_flow: CLIAuthFlow, loop, console, debug: bool = False):
     """
     Handle the login flow

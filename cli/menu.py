@@ -1,6 +1,6 @@
 """Menu display functionality for CLI"""
 
-from cli.status_display import get_auth_status
+from cli.status_display import get_combined_auth_status
 
 
 def clear_screen(console):
@@ -15,27 +15,20 @@ def display_header(console):
     console.print("=" * 50)
 
 
-def display_menu(storage, server_running: bool, bind_address: str, console):
+def display_menu(storage, chatgpt_storage, server_running: bool, bind_address: str, console):
     """
     Display the main menu
 
     Args:
-        storage: TokenStorage instance
+        storage: TokenStorage instance for Claude
+        chatgpt_storage: ChatGPTTokenStorage instance
         server_running: Whether the server is currently running
         bind_address: The bind address for the server
         console: Rich console for output
     """
-    auth_status, auth_detail = get_auth_status(storage)
+    auth_label, auth_detail, status_style = get_combined_auth_status(storage, chatgpt_storage)
 
-    # Status color based on state
-    if auth_status == "VALID":
-        status_style = "green"
-    elif auth_status == "EXPIRED":
-        status_style = "yellow"
-    else:
-        status_style = "red"
-
-    console.print(f" Claude Auth: [{status_style}]{auth_status}[/{status_style}] ({auth_detail})")
+    console.print(f"      Auth: [{status_style}]{auth_label}[/{status_style}] ({auth_detail})")
 
     if server_running:
         console.print(f" Server Status: [green]RUNNING[/green] at http://{bind_address}:8081")

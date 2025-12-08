@@ -7,13 +7,16 @@ from typing import Optional
 from rich.prompt import Prompt
 from proxy import ProxyServer
 from utils.storage import TokenStorage
-from cli.auth_handlers import check_and_refresh_auth
+from chatgpt_oauth import ChatGPTTokenStorage, ChatGPTOAuthManager
+from cli.auth_handlers import check_any_provider_auth
 
 
 def start_proxy_server(
     proxy_server: ProxyServer,
     storage: TokenStorage,
     oauth,
+    chatgpt_storage: ChatGPTTokenStorage,
+    chatgpt_oauth: ChatGPTOAuthManager,
     loop,
     console,
     bind_address: str,
@@ -30,6 +33,8 @@ def start_proxy_server(
         proxy_server: ProxyServer instance
         storage: TokenStorage instance
         oauth: OAuthManager instance
+        chatgpt_storage: ChatGPTTokenStorage instance
+        chatgpt_oauth: ChatGPTOAuthManager instance
         loop: Event loop for async operations
         console: Rich console for output
         bind_address: The bind address for the server
@@ -52,7 +57,9 @@ def start_proxy_server(
         return server_running, server_thread
 
     # Check authentication with automatic refresh
-    auth_ok, auth_status, message = check_and_refresh_auth(storage, oauth, loop, console, debug)
+    auth_ok, auth_status, message = check_any_provider_auth(
+        storage, oauth, chatgpt_storage, chatgpt_oauth, loop, console, debug
+    )
 
     if not auth_ok:
         console.print(f"[red]ERROR:[/red] {message}")
@@ -71,7 +78,7 @@ def start_proxy_server(
                 if choice == "1":
                     # Retry the refresh with incremented counter
                     return start_proxy_server(
-                        proxy_server, storage, oauth, loop, console,
+                        proxy_server, storage, oauth, chatgpt_storage, chatgpt_oauth, loop, console,
                         bind_address, server_running, server_thread,
                         debug, max_retries, retry_count + 1
                     )

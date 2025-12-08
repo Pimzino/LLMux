@@ -39,41 +39,40 @@ def run_headless(
     if debug and hasattr(__main__, '_proxy_debug_logger'):
         __main__._proxy_debug_logger.debug("[CLI] Starting headless mode")
 
-    # Check Anthropic authentication
-    auth_ok, auth_status, message = check_and_refresh_auth(storage, oauth, loop, console, debug)
-
-    if not auth_ok:
-        console.print(f"[red]Anthropic Authentication Error:[/red] {message}")
-        console.print("\n[yellow]To authenticate:[/yellow]")
-        console.print("1. Run: python cli.py")
-        console.print("2. Select option 2 to login")
-        console.print("3. Or set ANTHROPIC_OAUTH_TOKEN environment variable")
-        console.print("4. Or use: python cli.py --headless --token \"<your-token>\"")
-        sys.exit(1)
-
-    # Show Anthropic auth status
-    status = storage.get_status()
-    token_type = status.get("token_type", "oauth_flow")
-    token_type_display = "Long-term" if token_type == "long_term" else "OAuth Flow"
-
-    console.print("[bold cyan]Anthropic:[/bold cyan]")
-    console.print(f"  [green]✓ Authenticated[/green] ({token_type_display})")
-    console.print(f"  Token expires: {status.get('time_until_expiry', 'unknown')}")
-
-    # Check ChatGPT authentication (optional)
+    # Instantiate all auth providers
     chatgpt_storage = ChatGPTTokenStorage()
     chatgpt_oauth = ChatGPTOAuthManager()
-    chatgpt_auth_ok, chatgpt_status, chatgpt_message = check_and_refresh_chatgpt_auth(
-        chatgpt_storage, chatgpt_oauth, loop, console, debug
+
+    # Check for any valid authentication
+    auth_ok, auth_status, message = check_any_provider_auth(
+        storage, oauth, chatgpt_storage, chatgpt_oauth, loop, console, debug
     )
 
-    if chatgpt_auth_ok:
-        chatgpt_token_status = chatgpt_storage.get_status()
-        console.print("\n[bold cyan]ChatGPT:[/bold cyan]")
-        console.print(f"  [green]✓ Authenticated[/green] (OAuth Flow)")
-        console.print(f"  Token expires: {chatgpt_token_status.get('time_until_expiry', 'unknown')}")
+    if not auth_ok:
+        console.print(f"[red]Authentication Error:[/red] {message}")
+        console.print("\n[yellow]To authenticate, run the interactive CLI:[/yellow]")
+        console.print("  [cyan]python cli.py[/cyan]")
+        console.print("Then select option 2 for Authentication.")
+        sys.exit(1)
+
+    # Show status for both providers
+    c_status = storage.get_status()
+    g_status = chatgpt_storage.get_status()
+
+    console.print("[bold cyan]Anthropic:[/bold cyan]")
+    if c_status.get("has_tokens") and not c_status.get("is_expired"):
+        token_type = c_status.get("token_type", "oauth_flow")
+        token_type_display = "Long-term" if token_type == "long_term" else "OAuth Flow"
+        console.print(f"  [green]✓ Authenticated[/green] ({token_type_display})")
+        console.print(f"  Token expires: {c_status.get('time_until_expiry', 'unknown')}")
     else:
-        console.print("\n[bold cyan]ChatGPT:[/bold cyan]")
+        console.print("  [dim]Not authenticated[/dim]")
+
+    console.print("\n[bold cyan]ChatGPT:[/bold cyan]")
+    if g_status.get("has_tokens") and not g_status.get("is_expired"):
+        console.print(f"  [green]✓ Authenticated[/green] (OAuth Flow)")
+        console.print(f"  Token expires: {g_status.get('time_until_expiry', 'unknown')}")
+    else:
         console.print(f"  [dim]Not authenticated[/dim]")
 
     console.print()
