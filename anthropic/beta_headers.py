@@ -1,14 +1,14 @@
 """Beta header management for Anthropic API"""
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 
 logger = logging.getLogger(__name__)
 
 
 def build_beta_headers(
     anthropic_request: Dict[str, Any],
-    client_beta_headers: Optional[str] = None,
+    client_beta_headers: Optional[Union[str, List[str]]] = None,
     request_id: Optional[str] = None,
     for_streaming: bool = False
 ) -> str:
@@ -16,7 +16,7 @@ def build_beta_headers(
 
     Args:
         anthropic_request: The Anthropic API request data
-        client_beta_headers: Optional client-provided beta headers
+        client_beta_headers: Optional client-provided beta headers (string or list)
         request_id: Optional request ID for logging
         for_streaming: Whether this is for a streaming request
 
@@ -41,6 +41,17 @@ def build_beta_headers(
         if request_id:
             logger.debug(f"[{request_id}] Adding interleaved-thinking beta (thinking enabled)")
 
+    # Check if any tool has input_examples (requires advanced-tool-use beta)
+    tools = anthropic_request.get("tools")
+    if tools:
+        has_input_examples = any(
+            tool.get("input_examples") for tool in tools if isinstance(tool, dict)
+        )
+        if has_input_examples:
+            required_betas.append("advanced-tool-use-2025-11-20")
+            if request_id:
+                logger.debug(f"[{request_id}] Adding advanced-tool-use beta (input_examples detected in tools)")
+
     # Check if tools are present (non-streaming only)
     if not for_streaming and anthropic_request.get("tools"):
         required_betas.append("fine-grained-tool-streaming-2025-05-14")
@@ -53,7 +64,15 @@ def build_beta_headers(
     else:
         # For non-streaming, merge with client beta headers if provided
         if client_beta_headers:
-            client_betas = [beta.strip() for beta in client_beta_headers.split(",")]
+            # Handle both string and list formats
+            if isinstance(client_beta_headers, list):
+                # Already a list, flatten any comma-separated values within
+                client_betas = []
+                for item in client_beta_headers:
+                    client_betas.extend([beta.strip() for beta in item.split(",")])
+            else:
+                # String format, split by comma
+                client_betas = [beta.strip() for beta in client_beta_headers.split(",")]
             all_betas = list(dict.fromkeys(required_betas + client_betas))
             required_betas = all_betas
 
