@@ -100,7 +100,7 @@ class AnthropicProxyCLI:
         while True:
             clear_screen(self.console)
             display_header(self.console)
-            display_menu(self.storage, self.server_running, self.bind_address, self.console)
+            display_menu(self.storage, self.chatgpt_storage, self.server_running, self.bind_address, self.console)
 
             choice = Prompt.ask("Select option [1-5]", choices=["1", "2", "3", "4", "5"])
 
@@ -115,7 +115,8 @@ class AnthropicProxyCLI:
                     )
                 else:
                     self.server_running, self.server_thread = start_proxy_server(
-                        self.proxy_server, self.storage, self.oauth, self.loop,
+                        self.proxy_server, self.storage, self.oauth,
+                        self.chatgpt_storage, self.chatgpt_oauth, self.loop,
                         self.console, self.bind_address, self.server_running,
                         self.server_thread, self.debug, self.MAX_RETRIES
                     )
